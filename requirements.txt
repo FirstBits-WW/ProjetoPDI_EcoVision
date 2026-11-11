@@ -3,3 +3,6 @@ uvicorn[standard]
 pydantic-settings
 psycopg2-binary
 python-dotenv
+python-multipart
+opencv-python
+ultralytics

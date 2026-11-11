@@ -6,3 +6,7 @@ __pycache__/
 .coverage
 htmlcov/
 .DS_Store
+/TACO/
+/dataset/
+/subset_3classes/
+/taco_metrics.csv
