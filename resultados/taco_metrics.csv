@@ -1,0 +1,13 @@
+condition,class,true_positives,false_positives,false_negatives,precision,recall,f1_score,ap50,images_evaluated,iou_threshold,confidence_threshold,gamma,matched_categories
+original,todas,85,99,67,0.462,0.5592,0.506,0.4806,103,0.5,0.25,1.25,garrafa;lata;sacola
+original,garrafa,47,51,28,0.4796,0.6267,0.5434,0.5932,103,0.5,0.25,1.25,garrafa;lata;sacola
+original,lata,29,35,18,0.4531,0.617,0.5225,0.5566,103,0.5,0.25,1.25,garrafa;lata;sacola
+original,sacola,9,13,21,0.4091,0.3,0.3462,0.2921,103,0.5,0.25,1.25,garrafa;lata;sacola
+clahe,todas,88,120,64,0.4231,0.5789,0.4889,0.4851,103,0.5,0.25,1.25,garrafa;lata;sacola
+clahe,garrafa,46,72,29,0.3898,0.6133,0.4767,0.5719,103,0.5,0.25,1.25,garrafa;lata;sacola
+clahe,lata,33,38,14,0.4648,0.7021,0.5593,0.5833,103,0.5,0.25,1.25,garrafa;lata;sacola
+clahe,sacola,9,10,21,0.4737,0.3,0.3673,0.3,103,0.5,0.25,1.25,garrafa;lata;sacola
+gamma,todas,84,92,68,0.4773,0.5526,0.5122,0.4634,103,0.5,0.25,1.25,garrafa;lata;sacola
+gamma,garrafa,47,51,28,0.4796,0.6267,0.5434,0.5852,103,0.5,0.25,1.25,garrafa;lata;sacola
+gamma,lata,28,31,19,0.4746,0.5957,0.5283,0.5624,103,0.5,0.25,1.25,garrafa;lata;sacola
+gamma,sacola,9,10,21,0.4737,0.3,0.3673,0.2424,103,0.5,0.25,1.25,garrafa;lata;sacola

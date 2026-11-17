@@ -9,7 +9,7 @@ supercategorias. Os números do contador comunitário do site podem divergir e
 não devem ser confundidos com a versão oficial do artigo.
 
 As anotações oficiais usam o formato COCO. O projeto seleciona três grupos de
-categorias — lata, garrafa e sacola — e divide as imagens em treino e teste,
+categorias — lata, garrafa e sacola — e divide as imagens em treino, validação e teste,
 com semente fixa e sem reutilizar uma imagem nos dois conjuntos.
 
 O repositório não contém as imagens da TACO. Obtenha as imagens e o arquivo

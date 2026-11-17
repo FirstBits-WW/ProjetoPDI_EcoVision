@@ -60,16 +60,56 @@ def _box(detection: Detection) -> tuple[float, float, float, float]:
     )
 
 
-def match_detections(
+@dataclass(frozen=True)
+class MatchResult:
+    """Resultado da associação de um conjunto de predições a um gabarito.
+
+    `flags[i]` indica se `predictions[i]` (já ordenadas por confiança
+    decrescente) é verdadeiro positivo e `gt_indices[i]` qual caixa do
+    gabarito ela encontrou (ou None).
+    """
+
+    predictions: list[Detection]
+    flags: list[bool]
+    matched_ground_truth: set[int]
+    ground_truth_count: int
+    gt_indices: tuple[int | None, ...] = ()
+
+    def counts(self, min_confidence: float = 0.0) -> Counts:
+        tp = fp = 0
+        for prediction, is_tp in zip(self.predictions, self.flags):
+            if prediction.confidence < min_confidence:
+                continue
+            if is_tp:
+                tp += 1
+            else:
+                fp += 1
+        return Counts(tp, fp, self.ground_truth_count - tp)
+
+    def matched_at(self, min_confidence: float) -> set[int]:
+        return {
+            gt_index
+            for prediction, gt_index in zip(self.predictions, self.gt_indices)
+            if gt_index is not None and prediction.confidence >= min_confidence
+        }
+
+
+def match_with_flags(
     predictions: Iterable[Detection],
     ground_truth: Iterable[Detection],
     iou_threshold: float = 0.5,
-) -> Counts:
+) -> MatchResult:
+    """Associação gulosa por confiança decrescente (critério PASCAL VOC/COCO).
+
+    Como as predições são processadas da maior para a menor confiança, o
+    resultado para qualquer limiar de confiança é o mesmo que se obteria
+    descartando antes as predições abaixo dele.
+    """
     predictions = sorted(predictions, key=lambda item: item.confidence, reverse=True)
     ground_truth = list(ground_truth)
     matched_ground_truth: set[int] = set()
-    true_positives = 0
-    false_positives = 0
+    flags: list[bool] = []
+    gt_indices: list[int | None] = []
 
     for prediction in predictions:
         best_index = None
@@ -84,14 +124,49 @@ def match_detections(
                 best_index = index
                 best_iou = overlap
 
-        if best_index is None:
-            false_positives += 1
-        else:
+        if best_index is not None:
             matched_ground_truth.add(best_index)
-            true_positives += 1
+        flags.append(best_index is not None)
+        gt_indices.append(best_index)
 
-    return Counts(
-        true_positives=true_positives,
-        false_positives=false_positives,
-        false_negatives=len(ground_truth) - true_positives,
+    return MatchResult(
+        predictions=predictions,
+        flags=flags,
+        matched_ground_truth=matched_ground_truth,
+        ground_truth_count=len(ground_truth),
+        gt_indices=tuple(gt_indices),
+    )
+
+
+def match_detections(
+    predictions: Iterable[Detection],
+    ground_truth: Iterable[Detection],
+    iou_threshold: float = 0.5,
+) -> Counts:
+    return match_with_flags(predictions, ground_truth, iou_threshold).counts()
+
+
+def average_precision(
+    scored_predictions: Iterable[tuple[float, bool]], ground_truth_count: int
+) -> float:
+    """AP com interpolação em todos os pontos (envelope da curva P×R)."""
+    if ground_truth_count == 0:
+        return 0.0
+    ordered = sorted(scored_predictions, key=lambda item: item[0], reverse=True)
+    recalls = [0.0]
+    precisions = [1.0]
+    tp = fp = 0
+    for _, is_tp in ordered:
+        if is_tp:
+            tp += 1
+        else:
+            fp += 1
+        recalls.append(tp / ground_truth_count)
+        precisions.append(tp / (tp + fp))
+
+    for index in range(len(precisions) - 2, -1, -1):
+        precisions[index] = max(precisions[index], precisions[index + 1])
+    return sum(
+        (recalls[index] - recalls[index - 1]) * precisions[index]
+        for index in range(1, len(recalls))
     )

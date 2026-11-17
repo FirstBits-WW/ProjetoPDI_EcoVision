@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import re
 import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -11,20 +10,26 @@ from typing import Any
 
 IDS_ALVO = {"lata": 1, "garrafa": 2, "sacola": 3}
 
+# Mapeamento explícito pelos nomes oficiais das categorias da TACO.
+# A supercategoria NÃO é usada: em "Plastic bag & wrapper" ficam também
+# filme plástico, pacotes de salgadinho e anéis de fardo, que não são sacolas.
+# Para mudar a definição de uma classe, edite apenas este dicionário.
+CATEGORIAS_TACO = {
+    "lata": ("Drink can", "Food Can"),
+    "garrafa": ("Clear plastic bottle", "Glass bottle", "Other plastic bottle"),
+    "sacola": ("Garbage bag", "Single-use carrier bag", "Polypropylene bag"),
+}
+_NOME_PARA_CLASSE = {
+    " ".join(nome.casefold().split()): classe
+    for classe, nomes in CATEGORIAS_TACO.items()
+    for nome in nomes
+}
+SPLITS = ("train", "val", "test")
+
 
 def classe_alvo(categoria: dict[str, Any]) -> str | None:
-    texto = " ".join(
-        (str(categoria.get("name", "")), str(categoria.get("supercategory", "")))
-    ).casefold()
-    palavras = set(re.findall(r"[a-z]+", texto))
-
-    if "bottle" in palavras and "cap" not in palavras:
-        return "garrafa"
-    if "can" in palavras:
-        return "lata"
-    if "bag" in palavras:
-        return "sacola"
-    return None
+    nome = " ".join(str(categoria.get("name", "")).casefold().split())
+    return _NOME_PARA_CLASSE.get(nome)
 
 
 def _caminho_relativo(file_name: str) -> tuple[str, ...]:
@@ -76,13 +81,19 @@ def preparar_base(
     anotacoes_path: Path,
     saida: Path,
     imagens_dir: Path | None = None,
-    fracao_treino: float = 0.8,
+    fracao_treino: float = 0.7,
+    fracao_validacao: float = 0.1,
     seed: int = 42,
     copiar: bool = False,
     sobrescrever: bool = False,
 ) -> dict[str, dict[str, Any]]:
     if not 0 < fracao_treino < 1:
         raise ValueError("--treino deve estar entre 0 e 1, sem incluir os extremos.")
+    if not 0 < fracao_validacao < 1 or fracao_treino + fracao_validacao >= 1:
+        raise ValueError(
+            "--validacao deve ser maior que 0 e, somada a --treino, menor que 1 "
+            "(o restante vai para o teste)."
+        )
     if copiar and imagens_dir is None:
         raise ValueError("--copiar exige que --imagens seja informado.")
 
@@ -126,29 +137,35 @@ def preparar_base(
     imagens_filtradas = [
         imagem for imagem in coco["images"] if imagem["id"] in ids_imagens_alvo
     ]
-    if len(imagens_filtradas) < 2:
+    if len(imagens_filtradas) < 3:
         raise ValueError(
-            "São necessárias pelo menos duas imagens com as classes selecionadas."
+            "São necessárias pelo menos três imagens com as classes selecionadas."
         )
 
+    imagens_filtradas.sort(key=lambda imagem: imagem["id"])
     random.Random(seed).shuffle(imagens_filtradas)
-    ponto_corte = min(
-        max(int(len(imagens_filtradas) * fracao_treino), 1),
-        len(imagens_filtradas) - 1,
+    total = len(imagens_filtradas)
+    corte_treino = min(max(int(total * fracao_treino), 1), total - 2)
+    corte_validacao = min(
+        max(corte_treino + int(total * fracao_validacao), corte_treino + 1),
+        total - 1,
     )
-    ids_treino = {imagem["id"] for imagem in imagens_filtradas[:ponto_corte]}
-    ids_teste = {imagem["id"] for imagem in imagens_filtradas[ponto_corte:]}
-    if ids_treino & ids_teste:
-        raise RuntimeError("Uma imagem foi atribuída ao treino e ao teste.")
+    ids_por_split = {
+        "train": {i["id"] for i in imagens_filtradas[:corte_treino]},
+        "val": {i["id"] for i in imagens_filtradas[corte_treino:corte_validacao]},
+        "test": {i["id"] for i in imagens_filtradas[corte_validacao:]},
+    }
+    for primeiro in range(len(SPLITS)):
+        for segundo in range(primeiro + 1, len(SPLITS)):
+            if ids_por_split[SPLITS[primeiro]] & ids_por_split[SPLITS[segundo]]:
+                raise RuntimeError("Uma imagem foi atribuída a mais de uma divisão.")
 
     metadados = {key: coco[key] for key in ("info", "licenses") if key in coco}
     conjuntos = {
-        "train": _montar_coco(
-            imagens_filtradas, anotacoes_filtradas, ids_treino, metadados
-        ),
-        "test": _montar_coco(
-            imagens_filtradas, anotacoes_filtradas, ids_teste, metadados
-        ),
+        split: _montar_coco(
+            imagens_filtradas, anotacoes_filtradas, ids_por_split[split], metadados
+        )
+        for split in SPLITS
     }
 
     for nome, conjunto in conjuntos.items():
@@ -216,13 +233,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Filtra as categorias TACO de lata, garrafa e sacola e cria "
-            "divisões COCO de treino e teste."
+            "divisões COCO de treino, validação e teste."
         )
     )
     parser.add_argument("--anotacoes", type=Path, required=True)
     parser.add_argument("--imagens", type=Path)
     parser.add_argument("--saida", type=Path, default=Path("subset_3classes"))
-    parser.add_argument("--treino", type=float, default=0.8)
+    parser.add_argument("--treino", type=float, default=0.7)
+    parser.add_argument(
+        "--validacao",
+        type=float,
+        default=0.1,
+        help="Fração para validação durante o treino; o restante vai para teste.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--copiar", action="store_true")
     parser.add_argument("--sobrescrever", action="store_true")
@@ -234,6 +257,7 @@ def main() -> None:
             saida=args.saida,
             imagens_dir=args.imagens,
             fracao_treino=args.treino,
+            fracao_validacao=args.validacao,
             seed=args.seed,
             copiar=args.copiar,
             sobrescrever=args.sobrescrever,

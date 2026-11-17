@@ -27,3 +27,20 @@ class AnalysisResponse(BaseModel):
     detections: list[ApiDetection]
     processed_image: str
     time_ms: int
+
+
+class ConditionResult(BaseModel):
+    condition: str
+    detections: list[ApiDetection]
+    counts: dict[str, int]
+    processed_image: str
+    time_ms: int
+
+
+class ComparisonResponse(BaseModel):
+    analysis_id: str
+    model: str
+    gamma: float
+    confidence: float
+    conditions: list[ConditionResult]
+    time_ms: int

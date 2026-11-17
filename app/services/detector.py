@@ -21,6 +21,12 @@ class YoloDetector:
                 "A dependência 'ultralytics' não está instalada."
             ) from exc
 
+        caminho = Path(model_path)
+        if not caminho.is_absolute() and not caminho.is_file():
+            from app.core.config import PROJECT_ROOT
+
+            if (PROJECT_ROOT / caminho).is_file():
+                model_path = str(PROJECT_ROOT / caminho)
         if model_path != "yolo11n.pt" and not Path(model_path).is_file():
             raise DetectorUnavailableError(
                 f"Os pesos YOLO configurados não foram encontrados: {model_path}"
@@ -43,11 +49,17 @@ class YoloDetector:
             return {int(class_id): str(name) for class_id, name in names.items()}
         return {class_id: str(name) for class_id, name in enumerate(names)}
 
-    def detect(self, image: Any) -> list[Detection]:
+    def detect(
+        self, image: Any, confidence: float | None = None
+    ) -> list[Detection]:
+        options: dict[str, Any] = {}
+        if settings.yolo_imgsz:
+            options["imgsz"] = settings.yolo_imgsz
         results = self.model.predict(
             source=image,
-            conf=self.confidence,
+            conf=self.confidence if confidence is None else confidence,
             verbose=False,
+            **options,
         )
         result = results[0]
         if result.boxes is None:

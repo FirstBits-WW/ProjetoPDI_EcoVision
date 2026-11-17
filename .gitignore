@@ -10,3 +10,6 @@ htmlcov/
 /dataset/
 /subset_3classes/
 /taco_metrics.csv
+/resultados/
+/runs/
+*.pt

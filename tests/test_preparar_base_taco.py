@@ -5,12 +5,30 @@ import pytest
 from scripts.preparar_base_taco import classe_alvo, preparar_base
 
 
-def test_classe_alvo_matches_words_and_excludes_bottle_caps() -> None:
-    assert classe_alvo({"name": "Drink can"}) == "lata"
-    assert classe_alvo({"name": "Clear plastic bottle"}) == "garrafa"
-    assert classe_alvo({"name": "Plastic bag & wrapper"}) == "sacola"
-    assert classe_alvo({"name": "Bottle cap"}) is None
-    assert classe_alvo({"name": "Candy wrapper"}) is None
+def test_classe_alvo_uses_explicit_taco_names_not_supercategory() -> None:
+    assert classe_alvo({"name": "Drink can", "supercategory": "Can"}) == "lata"
+    assert classe_alvo({"name": "clear plastic  bottle"}) == "garrafa"
+    assert (
+        classe_alvo(
+            {"name": "Single-use carrier bag", "supercategory": "Plastic bag & wrapper"}
+        )
+        == "sacola"
+    )
+    for not_a_target in (
+        "Plastic film",
+        "Crisp packet",
+        "Six pack rings",
+        "Other plastic wrapper",
+        "Normal paper bag",
+        "Plastic bottle cap",
+        "Pop tab",
+    ):
+        assert (
+            classe_alvo(
+                {"name": not_a_target, "supercategory": "Plastic bag & wrapper"}
+            )
+            is None
+        )
 
 
 def test_preparar_base_splits_without_leakage_and_preserves_image_paths(
@@ -24,8 +42,8 @@ def test_preparar_base_splits_without_leakage_and_preserves_image_paths(
     categories = [
         {"id": 10, "name": "Drink can"},
         {"id": 20, "name": "Clear plastic bottle"},
-        {"id": 30, "name": "Plastic bag & wrapper"},
-        {"id": 40, "name": "Bottle cap"},
+        {"id": 30, "name": "Garbage bag"},
+        {"id": 40, "name": "Plastic bottle cap"},
     ]
 
     for image_id in range(10):
@@ -63,11 +81,13 @@ def test_preparar_base_splits_without_leakage_and_preserves_image_paths(
     )
 
     train_ids = {image["id"] for image in splits["train"]["images"]}
+    val_ids = {image["id"] for image in splits["val"]["images"]}
     test_ids = {image["id"] for image in splits["test"]["images"]}
-    assert len(train_ids) == 8
-    assert len(test_ids) == 2
+    assert (len(train_ids), len(val_ids), len(test_ids)) == (7, 1, 2)
+    assert train_ids.isdisjoint(val_ids)
     assert train_ids.isdisjoint(test_ids)
-    assert train_ids | test_ids == set(range(10))
+    assert val_ids.isdisjoint(test_ids)
+    assert train_ids | val_ids | test_ids == set(range(10))
     for split_name, split in splits.items():
         assert split["info"] == {"description": "fixture"}
         assert {category["name"] for category in split["categories"]} == {
@@ -98,3 +118,16 @@ def test_preparar_base_rejects_invalid_train_fraction(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="--treino"):
         preparar_base(annotations_path, tmp_path / "subset", fracao_treino=1.0)
+
+
+def test_preparar_base_rejects_validation_without_test_share(tmp_path) -> None:
+    annotations_path = tmp_path / "annotations.json"
+    annotations_path.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="--validacao"):
+        preparar_base(
+            annotations_path,
+            tmp_path / "subset",
+            fracao_treino=0.8,
+            fracao_validacao=0.2,
+        )

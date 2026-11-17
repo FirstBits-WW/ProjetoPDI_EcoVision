@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -13,6 +15,32 @@ def decode_image(image_bytes: bytes) -> np.ndarray:
     if image is None:
         raise InvalidImageError("O arquivo enviado não contém uma imagem válida.")
     return image
+
+
+def load_annotated_image(
+    path: Path, width: int | None = None, height: int | None = None
+) -> np.ndarray:
+    """Abre a imagem na mesma orientação usada pelas anotações.
+
+    Fotos da TACO trazem orientação EXIF. O OpenCV aplica a rotação por
+    padrão; se o tamanho resultante não bater com o width/height do JSON,
+    tenta-se a leitura sem rotação para que as caixas continuem alinhadas.
+    """
+    image = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if image is None:
+        raise InvalidImageError(f"Não foi possível abrir a imagem: {path}")
+    if width is None or height is None or image.shape[:2] == (height, width):
+        return image
+
+    unrotated = cv2.imread(
+        str(path), cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
+    )
+    if unrotated is not None and unrotated.shape[:2] == (height, width):
+        return unrotated
+    raise InvalidImageError(
+        f"Tamanho de {path} ({image.shape[1]}x{image.shape[0]}) não confere "
+        f"com as anotações ({width}x{height})."
+    )
 
 
 def preprocess_image(
